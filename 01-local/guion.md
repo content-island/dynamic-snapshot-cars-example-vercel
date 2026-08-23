@@ -35,7 +35,7 @@ en cámara, o lo censuras en edición, o abre `.env.example` en su lugar.
 
 ## Ficha del vídeo
 
-**Duración estimada:** 34–38 min.
+**Duración estimada:** 35–39 min.
 
 | #   | Bloque                             | Aprox. |
 | --- | ---------------------------------- | ------ |
@@ -1415,73 +1415,234 @@ export const startInstance = createStart(() => ({
 
 ---
 
-## Bloque 10 · Demo final · ~3 min
+## Bloque 10 · Demo final · ~4 min
 
-**Ojo:** esta es la parte que se lleva la gente. Ensáyala una vez antes de grabar.
-Ten Redis vacío al empezar.
+**Ojo:** esta es la parte que se lleva la gente. Ensáyala entera una vez antes de
+grabar. Todos los comandos están probados; van tal cual.
+
+**Preparación**, antes de empezar a grabar el bloque. Necesitas **dos terminales**:
+`npm run dev` bloquea la suya, y el `export` del secreto tiene que estar en la
+otra, que es la que se verá en pantalla.
+
+**Terminal 1** · el servidor, la dejas corriendo
+
+```bash
+docker compose up -d
+npm run dev
+```
+
+**Ojo importante:** aquí **no** vacíes Redis. `npm run dev` carga el snapshot nada
+más arrancar, antes de que toques el navegador, así que si lo vacías ahora se
+habrá vuelto a llenar solo cuando lo enseñes. Lo vaciamos en cámara, en el 10.1.
+
+**Terminal 2** · desde aquí lanzas todos los `curl`
+
+```bash
+export SNAPSHOT_REFRESH_SECRET=$(grep ^SNAPSHOT_REFRESH_SECRET= .env | cut -d= -f2-)
+```
+
+Ese `export` deja el secreto en la sesión **sin enseñarlo en pantalla**. Hazlo
+antes de empezar a grabar, y no cierres esa pestaña: si abres otra, se pierde y
+todos los `curl` te darán `401`.
+
+**Ojo:** `docker compose exec` sólo funciona si arrancaste el contenedor con
+`docker compose up`. Si lo arrancaste con `docker start`, usa
+`docker exec content-island-redis redis-cli ...` en su lugar.
 
 ### 10.1 Redis vacío
 
-**En pantalla:** `npm run dev` y cargas la home.
+**En pantalla:** el servidor ya está corriendo. Vacías Redis en directo.
+
+**Terminal**
+
+```bash
+docker compose exec redis redis-cli FLUSHALL
+docker compose exec redis redis-cli DBSIZE
+```
+
+**En pantalla:** `OK` y luego `0`.
 
 **Dices:**
 
-> Redis está vacío y la web carga igual. ¿Por qué? Porque si no encuentra nada, la
-> instancia se lo pide directamente a Content Island y de paso deja Redis
-> preparado para las siguientes.
+> Acabo de borrar Redis entero. Cero claves. Y el servidor sigue corriendo.
 
-**En pantalla:** `docker compose exec redis redis-cli HGET "content-island:snapshot" version`
+**En pantalla:** recargas `http://localhost:3000` en el navegador. Carga con normalidad.
 
 **Dices:**
 
-> Y ahí está la versión. Se ha recuperado sola.
+> Y la web funciona igual. ¿Por qué? Porque al no encontrar nada, la instancia se lo
+> ha pedido directamente a Content Island. Y de paso ha dejado Redis preparado para
+> las que vengan detrás.
+
+**Terminal**
+
+```bash
+docker compose exec redis redis-cli HGET "content-island:snapshot" version
+```
+
+**En pantalla:** devuelve una fecha ISO, tipo `2026-08-23T17:21:54.701Z`.
+
+**Dices:**
+
+> Ahí está la versión otra vez. Se ha recuperado sola, sin que yo tocara nada.
+
+**En pantalla:** el log del servidor.
+
+```text
+[snapshot] Redis is empty, rebuilding from Content Island
+[snapshot] Redis repopulated with version 2026-08-23T17:21:54.701Z
+```
 
 ### 10.2 El secreto
 
-**En pantalla:** `curl` sin cabecera y con una incorrecta.
+**Terminal**
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST http://localhost:3000/api/snapshot/refresh
+```
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST http://localhost:3000/api/snapshot/refresh \
+  -H "x-refresh-secret: <PASTE_SNAPSHOT_SECRET_HERE_FROM_ENV>"
+```
+
+**En pantalla:** los dos devuelven `401`.
 
 **Dices:**
 
-> Sin secreto, cuatrocientos uno. Con un secreto mal, cuatrocientos uno también. Con
-> el bueno...
+> Sin secreto, cuatrocientos uno. Inventándomelo, cuatrocientos uno también. Con el
+> bueno...
 
 ### 10.3 El refresco
 
-**En pantalla:** el `curl` bueno y su respuesta JSON.
+**Terminal**
+
+```bash
+curl -s -X POST http://localhost:3000/api/snapshot/refresh \
+  -H "x-refresh-secret: $SNAPSHOT_REFRESH_SECRET" | jq
+```
+
+**En pantalla:**
+
+```json
+{
+  "status": "updated",
+  "version": "2026-08-23T17:18:56.004Z",
+  "encoding": "gzip",
+  "compressedSize": 104295,
+  "uncompressedSize": 408067,
+  "updatedAt": "2026-08-23T17:18:56.056Z"
+}
+```
 
 **Dices:**
 
-> ...doscientos, y ahí tienes los tamaños. Cuatrocientos ocho kilos a ciento cuatro.
+> ...doscientos. Y ahí tienes los tamaños que te contaba antes: cuatrocientos ocho
+> mil bytes de JSON se han quedado en ciento cuatro mil comprimidos.
+
+**Ojo:** si no tienes `jq`, cambia el `| jq` por `| python3 -m json.tool`.
 
 ### 10.4 Lo que hemos venido a ver
 
-**En pantalla:** partes la pantalla. Content Island a un lado, la web al otro, y
-si puedes el endpoint `/api/content-island/snapshot-info` en una tercera.
+**En pantalla:** parte la pantalla. Content Island a un lado, la web al otro y, si
+te cabe, una terminal en una tercera.
+
+**Terminal**
+
+```bash
+curl -s http://localhost:3000/api/content-island/snapshot-info | jq
+```
+
+**En pantalla:**
+
+```json
+{
+  "redisKey": "content-island:snapshot",
+  "local": {
+    "schemaVersion": 1,
+    "exportedAt": "2026-08-23T17:18:56.004Z",
+    "projectId": "6a674408fc34a3ff37612069",
+    "view": "published"
+  },
+  "remoteVersion": "2026-08-23T17:18:56.004Z",
+  "inSync": true
+}
+```
 
 **Dices:**
 
-> Y ahora lo bueno. Cambio el precio de este coche en Content Island, y publico.
+> Antes de tocar nada, fíjate en este endpoint. Me dice dos versiones: la que está
+> sirviendo esta instancia desde memoria, y la que hay publicada en Redis. Ahora
+> mismo coinciden.
 
-**En pantalla:** consulta `snapshot-info`.
+**En pantalla:** cambias el precio del coche en Content Island y **publicas**.
+Luego lanzas el refresco.
+
+**Terminal**
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST http://localhost:3000/api/snapshot/refresh \
+  -H "x-refresh-secret: $SNAPSHOT_REFRESH_SECRET"
+```
+
+**Terminal** — la versión corta, que en pantalla se lee mucho mejor:
+
+```bash
+curl -s http://localhost:3000/api/content-island/snapshot-info \
+  | jq '{local: .local.exportedAt, remoto: .remoteVersion, inSync}'
+```
+
+**En pantalla:**
+
+```json
+{
+  "local": "2026-08-23T17:18:56.004Z",
+  "remoto": "2026-08-23T17:19:13.982Z",
+  "inSync": false
+}
+```
 
 **Dices:**
 
-> Mira esto un segundo, que es muy didáctico. Este endpoint me dice dos versiones:
-> la que está sirviendo esta instancia, y la que hay publicada en Redis. Y ahora
-> mismo **no coinciden**.
+> Y aquí está lo más didáctico del vídeo. Mira: **no coinciden**. Redis ya tiene la
+> versión nueva, y esta instancia sigue sirviendo la anterior.
 >
-> Eso no es un fallo. Eso es la ventana de consistencia. Redis ya tiene lo nuevo, y
-> esta instancia todavía sirve lo anterior porque no le toca preguntar. Dura, como
-> mucho, lo que dure el intervalo. Aquí lo tengo en cinco segundos.
+> Eso no es un fallo. Eso es la ventana de consistencia. Esta instancia todavía no
+> ha preguntado, porque no le toca. Dura como mucho lo que dure el intervalo, que
+> aquí lo tengo en cinco segundos.
 
-**En pantalla:** esperas, recargas la web. Precio nuevo. Vuelves a `snapshot-info`.
+**En pantalla:** esperas unos segundos, recargas la web (el precio nuevo ya está) y
+repites el comando anterior.
+
+**En pantalla:**
+
+```json
+{
+  "local": "2026-08-23T17:19:13.982Z",
+  "remoto": "2026-08-23T17:19:13.982Z",
+  "inSync": true
+}
+```
 
 **Dices:**
 
-> Y ahora sí. Contenido nuevo, sin desplegar, sin reconstruir. Y en el log ves el
-> momento exacto en que esta instancia se ha dado cuenta.
+> Y ahora sí. Contenido nuevo, sin desplegar y sin reconstruir nada.
 
-**Ojo:** deja el log visible unos segundos. Que se lea `new version detected`.
+**En pantalla:** el log del `npm run dev`.
+
+```text
+[snapshot] new version detected: updated (version 2026-08-23T17:19:13.982Z)
+```
+
+**Dices:**
+
+> Y en el log tienes el momento exacto en que esta instancia se ha dado cuenta.
+
+**Ojo:** deja el log visible unos segundos. Que dé tiempo a leer
+`new version detected`.
 
 ---
 
