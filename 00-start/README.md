@@ -31,18 +31,59 @@ If you prefer not to use Tailwind CSS:
 4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
 
 
-## Deploy with Nitro
+## Environment variables
 
-This project uses Nitro as a generic server adapter, so it can run on any Node-compatible host.
+| Variable | Required | Description |
+| --- | --- | --- |
+| `CONTENT_ISLAND_ACCESS_TOKEN` | yes | Access token for the Content Island API. Read server-side only (`process.env`), so it must **not** carry the `VITE_` prefix. |
+
+Copy `.env.example` to `.env` for local development.
+
+## Deploy to Vercel
+
+No adapter to install. Nitro is already a dependency and the `nitro()` plugin is registered in
+`vite.config.ts`, which is all Vercel's TanStack Start guide asks for. During a Vercel build the
+`VERCEL` environment variable is set, Nitro auto-selects its `vercel` preset and emits
+`.vercel/output` (Build Output API v3).
+
+> Do **not** hardcode `nitro({ preset: 'vercel' })` in `vite.config.ts` — that would also change the
+> local build, which uses the default `node-server` preset and emits `.output/`.
+
+Project settings on Vercel:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `00-start` (the git repo root is the parent folder) |
+| Framework Preset | TanStack Start (auto-detected) |
+| Build Command | `npm run build` (default) |
+| Output Directory | leave empty — Nitro writes `.vercel/output` |
+| Node.js Version | `22.x` (Nitro's Vercel preset only emits `nodejs20.x` / `nodejs22.x`) |
+| Environment Variables | `CONTENT_ISLAND_ACCESS_TOKEN` |
+
+Deploy from the CLI:
+
+```bash
+npx vercel                                    # link the project
+npx vercel env add CONTENT_ISLAND_ACCESS_TOKEN
+npx vercel --prod
+```
+
+To reproduce the Vercel build locally without changing any file:
+
+```bash
+NITRO_PRESET=vercel npm run build
+```
+
+### Running on a plain Node host
+
+The default build emits a self-contained Node server in `.output/`:
 
 ```bash
 npm run build
-node dist/server/index.mjs
+node .output/server/index.mjs
 ```
 
-The build output is a self-contained Node server. To deploy, push the `dist/` directory to your host (Render, Fly.io, your own VPS, etc.) and run the server command above.
-
-For host-specific presets (Vercel, Netlify, Cloudflare, AWS Lambda, etc.) and tuning, see https://v3.nitro.build/deploy.
+For other host presets (Netlify, Cloudflare, AWS Lambda, etc.) see https://nitro.build/deploy.
 
 
 ## Shadcn
