@@ -1,0 +1,1 @@
+# dynamic-snapshot-cars-example-vercel
