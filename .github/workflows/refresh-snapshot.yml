@@ -1,0 +1,49 @@
+name: Refresh snapshot
+
+on:
+  # Manual: para inicializar Redis en producción y para depurar.
+  workflow_dispatch:
+  # Automático: Content Island dispara este evento al publicar contenido.
+  # El nombre debe coincidir EXACTAMENTE con el configurado en el webhook.
+  repository_dispatch:
+    types: [content-published]
+
+# Si llegan varias publicaciones seguidas, cancelamos la anterior: la última
+# exportación se lleva el estado publicado más reciente de todas formas.
+concurrency:
+  group: refresh-content-island-snapshot
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: POST al endpoint de refresco
+        env:
+          REFRESH_URL: ${{ secrets.REFRESH_URL }}
+          REFRESH_SECRET: ${{ secrets.SNAPSHOT_REFRESH_SECRET }}
+
+        run: |
+          if [ -z "$REFRESH_URL" ] || [ -z "$REFRESH_SECRET" ]; then
+            echo "Faltan los secretos REFRESH_URL o SNAPSHOT_REFRESH_SECRET"
+            exit 1
+          fi
+
+          status=$(curl -sS \
+            --retry 3 \
+            --retry-all-errors \
+            --max-time 60 \
+            -o /tmp/refresh-response.json \
+            -w "%{http_code}" \
+            -X POST "$REFRESH_URL" \
+            -H "x-refresh-secret: $REFRESH_SECRET")
+
+          echo "HTTP $status"
+          cat /tmp/refresh-response.json
+          echo
+
+          [ "$status" = "200" ] || exit 1

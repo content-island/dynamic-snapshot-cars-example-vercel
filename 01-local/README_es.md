@@ -754,6 +754,8 @@ proveedor.
 
 ## 16. Qué queda para `02-deploy`
 
+Todo esto está ya hecho en [`02-deploy`](../02-deploy):
+
 - Redis gestionado desde el Marketplace de Vercel.
 - Variables de entorno en Vercel y `SNAPSHOT_CHECK_INTERVAL_MS` realista.
 - Inicializar el Redis de producción.

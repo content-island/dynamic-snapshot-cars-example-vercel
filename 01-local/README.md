@@ -751,6 +751,8 @@ can watch it before hitting your provider's limits.
 
 ## 16. What is left for `02-deploy`
 
+All of it is done in [`02-deploy`](../02-deploy):
+
 - Managed Redis from the Vercel Marketplace.
 - Environment variables on Vercel and a realistic `SNAPSHOT_CHECK_INTERVAL_MS`.
 - Initialising the production Redis.
