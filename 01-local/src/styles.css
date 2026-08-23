@@ -1,0 +1,354 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Automotive palette: asphalt / carbon body, racing-red accent, steel text. */
+  --ink: #eef1f5;
+  --ink-soft: #a3adba;
+  --racing-red: #e5202f;
+  --racing-red-deep: #ff4a52;
+  --steel: #6f7b8a;
+  --carbon: #16191e;
+  --asphalt: #0b0d10;
+  --surface: rgba(28, 32, 38, 0.72);
+  --surface-strong: rgba(34, 39, 46, 0.92);
+  --line: rgba(255, 255, 255, 0.1);
+  --inset-glint: rgba(255, 255, 255, 0.06);
+  --kicker: #97a2b0;
+  --bg-base: #0b0d10;
+  --header-bg: rgba(13, 16, 20, 0.86);
+  --hero-a: rgba(229, 32, 47, 0.16);
+  --hero-b: rgba(120, 140, 168, 0.12);
+
+  --background: oklch(0.17 0.006 260);
+  --foreground: oklch(0.95 0.005 260);
+  --card: oklch(0.22 0.008 260);
+  --card-foreground: oklch(0.95 0.005 260);
+  --popover: oklch(0.22 0.008 260);
+  --popover-foreground: oklch(0.95 0.005 260);
+  --primary: oklch(0.58 0.221 25.5);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.29 0.01 260);
+  --secondary-foreground: oklch(0.95 0.005 260);
+  --muted: oklch(0.27 0.009 260);
+  --muted-foreground: oklch(0.72 0.014 260);
+  --accent: oklch(0.32 0.012 260);
+  --accent-foreground: oklch(0.96 0.005 260);
+  --destructive: oklch(0.58 0.221 25.5);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.32 0.011 260);
+  --input: oklch(0.32 0.011 260);
+  --ring: oklch(0.58 0.221 25.5);
+  --chart-1: oklch(0.58 0.221 25.5);
+  --chart-2: oklch(0.72 0.16 75);
+  --chart-3: oklch(0.68 0.12 230);
+  --chart-4: oklch(0.62 0.02 260);
+  --chart-5: oklch(0.8 0.01 260);
+  --radius: 0.25rem;
+  --sidebar: oklch(0.2 0.007 260);
+  --sidebar-foreground: oklch(0.95 0.005 260);
+  --sidebar-primary: oklch(0.58 0.221 25.5);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.29 0.01 260);
+  --sidebar-accent-foreground: oklch(0.95 0.005 260);
+  --sidebar-border: oklch(0.32 0.011 260);
+  --sidebar-ring: oklch(0.58 0.221 25.5);
+}
+
+/*
+ * The palette is dark by default (a car portal reads better on asphalt), so the
+ * `.dark` variant only deepens the body a little further.
+ */
+.dark {
+  --carbon: #101317;
+  --asphalt: #06080a;
+  --bg-base: #06080a;
+  --surface: rgba(22, 26, 31, 0.78);
+  --surface-strong: rgba(28, 33, 39, 0.94);
+
+  --background: oklch(0.14 0.005 260);
+  --card: oklch(0.19 0.007 260);
+  --popover: oklch(0.19 0.007 260);
+  --sidebar: oklch(0.17 0.006 260);
+}
+
+@theme inline {
+  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  background-color: var(--bg-base);
+  background:
+    radial-gradient(980px 520px at 50% -12%, var(--hero-a), transparent 62%),
+    radial-gradient(900px 560px at 108% 8%, var(--hero-b), transparent 64%),
+    linear-gradient(180deg, var(--carbon) 0%, var(--asphalt) 58%, #05070a 100%);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Brushed-metal sheen over the asphalt. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.5;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.05), transparent 38%),
+    radial-gradient(circle at 82% 68%, rgba(229, 32, 47, 0.07), transparent 44%);
+}
+
+/* Fine diagonal weave, carbon-fibre style. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.32;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.032) 0 1px,
+      transparent 1px 6px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(0, 0, 0, 0.22) 0 1px,
+      transparent 1px 6px
+    );
+  mask-image: radial-gradient(circle at 50% 24%, black, transparent 82%);
+}
+
+a {
+  color: var(--racing-red-deep);
+  text-decoration-color: rgba(255, 74, 82, 0.38);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: #ff6d73;
+}
+
+code {
+  font-size: 0.9em;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.prose pre {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #101317;
+  color: #e8efff;
+}
+
+.page-wrap {
+  width: min(1180px, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+/*
+ * Display face for headings: Archivo at an expanded width, uppercase and tightly
+ * tracked — the wordmark/spec-sheet look of car brochures.
+ */
+.display-title {
+  font-family: var(--font-display);
+  font-stretch: 118%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.005em;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  background: linear-gradient(168deg, var(--surface-strong), var(--surface));
+  box-shadow:
+    0 1px 0 var(--inset-glint) inset,
+    0 24px 48px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.feature-card {
+  background: linear-gradient(168deg, var(--surface-strong), var(--surface));
+  box-shadow:
+    0 1px 0 var(--inset-glint) inset,
+    0 18px 34px rgba(0, 0, 0, 0.42);
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--racing-red) 55%, var(--line));
+}
+
+button,
+.panel,
+a {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease,
+    transform 180ms ease;
+}
+
+/* Small uppercase label used for years and spec names. */
+.spec-label {
+  font-family: var(--font-display);
+  font-stretch: 105%;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 0.68rem;
+  color: var(--kicker);
+}
+
+.nav-link {
+  position: relative;
+  text-decoration: none;
+  color: var(--ink-soft);
+}
+
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -8px;
+  width: 100%;
+  height: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--racing-red), #ff8a5c);
+  transition: transform 170ms ease;
+}
+
+.nav-link:hover,
+.nav-link.is-active {
+  color: var(--ink);
+}
+
+.nav-link:hover::after,
+.nav-link.is-active::after {
+  transform: scaleX(1);
+}
+
+.underline-fill {
+  position: relative;
+  text-decoration: none;
+}
+
+.underline-fill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--racing-red);
+  opacity: 0.35;
+}
+
+.underline-fill::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 0;
+  height: 2px;
+  background: var(--racing-red);
+  transition: width 320ms ease;
+}
+
+.underline-fill:hover::after {
+  width: 100%;
+}
+
+.rise-in {
+  animation: rise-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: var(--header-bg);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    color: var(--foreground);
+  }
+}
