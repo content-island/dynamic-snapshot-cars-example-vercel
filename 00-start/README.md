@@ -60,19 +60,76 @@ Project settings on Vercel:
 | Node.js Version | `22.x` (Nitro's Vercel preset only emits `nodejs20.x` / `nodejs22.x`) |
 | Environment Variables | `CONTENT_ISLAND_ACCESS_TOKEN` |
 
-Deploy from the CLI:
+### Option A — Git integration
+
+Push the repo, then import it at [vercel.com/new](https://vercel.com/new). Set **Root Directory** to
+`00-start` during the import. Every push to `main` triggers a production deployment, and every other
+branch gets a preview deployment.
+
+### Option B — Vercel CLI
+
+Run every command from inside `00-start/`.
 
 ```bash
-npx vercel                                    # link the project
-npx vercel env add CONTENT_ISLAND_ACCESS_TOKEN
-npx vercel --prod
+npm i -g vercel        # or use npx vercel for every command below
+vercel login
 ```
 
-To reproduce the Vercel build locally without changing any file:
+**1. Link the local folder to a Vercel project.**
+
+```bash
+vercel link
+```
+
+If the project was already created through the Git integration, pick it from the list and the CLI
+links to it instead of creating a duplicate. When it asks *"In which directory is your code
+located?"*, answer `./` — you are already inside `00-start`, which is the Root Directory.
+
+This writes `.vercel/project.json` with the org and project IDs. That folder is gitignored.
+
+**2. Environment variables.**
+
+```bash
+vercel env add CONTENT_ISLAND_ACCESS_TOKEN production
+vercel env add CONTENT_ISLAND_ACCESS_TOKEN preview
+vercel env pull .env.local                              # bring them down for local dev
+```
+
+`vercel env pull` writes `.env.local`, which Nitro loads in dev on top of `.env` (verified: with a
+bad token in `.env` and a good one in `.env.local`, `npm run dev` uses the good one). Both files are
+gitignored.
+
+**3. Deploy.**
+
+```bash
+vercel              # preview deployment, prints a unique URL
+vercel --prod       # production deployment
+```
+
+Both build on Vercel's infrastructure. To build locally instead — useful for debugging a build
+failure without waiting on the queue:
+
+```bash
+vercel build            # produces .vercel/output on your machine
+vercel deploy --prebuilt
+```
+
+**Useful checks.**
+
+```bash
+vercel ls               # recent deployments
+vercel logs <url>       # runtime logs of a deployment
+vercel inspect <url>    # what was built, function sizes
+```
+
+To reproduce Vercel's build with plain npm, without the CLI and without changing any file:
 
 ```bash
 NITRO_PRESET=vercel npm run build
 ```
+
+Expect `.vercel/output/config.json` (Build Output API v3) and
+`.vercel/output/functions/__fallback.func/.vc-config.json` with `"runtime": "nodejs22.x"`.
 
 ### Running on a plain Node host
 
