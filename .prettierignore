@@ -1,0 +1,4 @@
+# Los guiones de vídeo llevan dentro el código completo de cada fichero, copiado
+# tal cual del repo para poder pegarlo en directo. Si Prettier los reformatea,
+# el código del guion deja de coincidir con el de src/.
+**/guion.md

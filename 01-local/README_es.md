@@ -1,6 +1,6 @@
 # 01-local — Dynamic Snapshot con Redis, en local
 
-*[English version](./README.md)*
+_[English version](./README.md)_
 
 Partimos de `00-start`, que resuelve cada petición llamando a la API de Content
 Island, y lo convertimos en una aplicación que sirve **todo el contenido desde
@@ -41,11 +41,11 @@ pierde la notificación y no hay forma de saberlo.
 Por eso aquí **invertimos el modelo**: en vez de que Redis avise, cada instancia
 **pregunta**. Y pregunta barato.
 
-| Pieza | Responsabilidad |
-| --- | --- |
-| Redis | Fuente de verdad del snapshot vigente |
-| Memoria de la Function | Copia rápida, para las lecturas |
-| API de Content Island | Origen para generar versiones nuevas |
+| Pieza                  | Responsabilidad                       |
+| ---------------------- | ------------------------------------- |
+| Redis                  | Fuente de verdad del snapshot vigente |
+| Memoria de la Function | Copia rápida, para las lecturas       |
+| API de Content Island  | Origen para generar versiones nuevas  |
 
 Pub/Sub se podría añadir después como optimización para propagar antes los
 cambios, pero la comprobación de versión tendría que seguir existiendo igual.
@@ -138,8 +138,13 @@ reinicio del contenedor, cosa que se agradece mientras desarrollas.
 ## 4. Dependencias y variables
 
 ```bash
-npm install redis
+npm install redis @vercel/functions
 ```
+
+`redis` es el cliente oficial de Redis para Node. `@vercel/functions` son
+utilidades para código que corre dentro de una Vercel Function; de ahí usamos
+solo `attachDatabasePool` (ver sección 6). Fuera de Vercel es un no-op, así que
+no molesta en local.
 
 `zlib`, `util` y `crypto` vienen con Node.
 
@@ -165,7 +170,61 @@ vacío, la clave es `content-island:snapshot`.
 
 ---
 
-## 5. La conexión a Redis
+## 5. Que `src/server/` no llegue nunca al navegador
+
+Todo lo que hay bajo `src/server/` maneja secretos: el token de Content Island, la
+URL de Redis (que lleva la contraseña dentro) y el secreto del endpoint de
+refresco. Nada de eso puede acabar en el bundle del cliente.
+
+**En TanStack Start el código es isomorfo por defecto** — su propia guía lo marca
+como *CRITICAL*: «All code is ISOMORPHIC by default». No hay separación automática
+por carpetas. Hay que declararla.
+
+Se declara en `vite.config.ts`:
+
+```ts
+tanstackStart({
+  importProtection: {
+    client: {
+      files: ["**/src/server/**"],
+    },
+  },
+});
+```
+
+Si alguien importa algo de `src/server/` desde un componente, **el build falla** con
+la traza completa de quién importó qué:
+
+```text
+[import-protection] Import denied in client environment
+
+  Denied by file pattern: **/src/server/**
+  Importer: src/routes/index.tsx:14:29
+  Import: "#/server/probe"
+  Resolved: src/server/probe.ts
+```
+
+### Por qué la carpeta y no `*.server.ts`
+
+TanStack Start trae de serie la convención `*.server.*`, que funciona igual de
+bien. Pero solo protege los ficheros que te acuerdes de renombrar. Protegiendo la
+carpeta cubres también los que aún no existen.
+
+Y esto no es teórico. Medido en este proyecto, importando desde un componente de
+cliente un `src/server/probe.ts` con una única constante:
+
+| | Build | ¿Llega al navegador? |
+| --- | --- | --- |
+| Sin la regla | **pasa en verde** | **sí, la constante acabó en `.output/public/assets/*.js`** |
+| Con la regla | falla | no |
+
+El código actual no se filtraba sólo porque arrastra `node:zlib` y `node:crypto`, y
+eso rompe el bundle de cliente por otro motivo. Un fichero de servidor sin
+dependencias de Node —una constante, un `fetch`— se colaba **en silencio**.
+
+---
+
+## 6. La conexión a Redis
 
 `src/server/redis.ts` expone tres cosas: el cliente, un cliente gemelo que
 devuelve `Buffer`, y una función que garantiza que hay conexión.
@@ -175,10 +234,10 @@ export function getBufferClient() {
   if (!bufferClient) {
     bufferClient = getClient().withTypeMapping({
       [RESP_TYPES.BLOB_STRING]: Buffer,
-    })
+    });
   }
 
-  return bufferClient
+  return bufferClient;
 }
 ```
 
@@ -201,28 +260,28 @@ Tres detalles que no son evidentes:
 
 ```ts
 export async function ensureRedisReady(): Promise<void> {
-  const redis = getClient()
+  const redis = getClient();
 
   if (redis.isReady) {
-    return
+    return;
   }
 
   if (!redis.isOpen) {
-    connectionPromise = undefined
+    connectionPromise = undefined;
   }
 
   connectionPromise ??= redis.connect().catch((error) => {
-    connectionPromise = undefined
-    throw error
-  })
+    connectionPromise = undefined;
+    throw error;
+  });
 
-  await connectionPromise
+  await connectionPromise;
 }
 ```
 
 ---
 
-## 6. El almacén: gzip + un `HSET`
+## 7. El almacén: gzip + un `HSET`
 
 `src/server/snapshot-store.ts`. Todo el estado publicado vive en **un solo hash**:
 
@@ -246,7 +305,7 @@ await getRedis().hSet(getSnapshotKey(), {
   compressedSize: metadata.compressedSize.toString(),
   uncompressedSize: metadata.uncompressedSize.toString(),
   updatedAt: metadata.updatedAt,
-})
+});
 ```
 
 Esa atomicidad es la razón de usar un hash y no varias claves sueltas.
@@ -275,16 +334,16 @@ el código viejo falla claro en lugar de reventar dentro de `gunzip`.
 
 ---
 
-## 7. El cliente en modo snapshot
+## 8. El cliente en modo snapshot
 
 `src/common/api/content-island-client.ts`:
 
 ```ts
 export const contentIslandClient = createClient({
   accessToken,
-  mode: 'snapshot',
+  mode: "snapshot",
   snapshotLoader: loadSnapshotJson,
-})
+});
 ```
 
 **No hay que tocar `car-list.api.ts` ni `car-detail.api.ts`.** Sus
@@ -300,14 +359,14 @@ memoria.
 
 ---
 
-## 8. El endpoint que actualiza Redis
+## 9. El endpoint que actualiza Redis
 
 `src/routes/api.snapshot.refresh.ts`. Hace cuatro cosas: valida el secreto,
 descarga con `exportSnapshot()`, comprime y guarda.
 
 ```ts
-const snapshot = await exportSnapshot({ accessToken })
-const metadata = await saveSnapshot(snapshot, snapshot.meta.exportedAt)
+const snapshot = await exportSnapshot({ accessToken });
+const metadata = await saveSnapshot(snapshot, snapshot.meta.exportedAt);
 ```
 
 `exportSnapshot()` valida forma y versión de esquema. Si falla, **no tocamos
@@ -316,10 +375,10 @@ Redis**, así que la versión anterior sigue publicada.
 Sobre el secreto: comparamos **hashes SHA-256**, no las cadenas.
 
 ```ts
-const expectedHash = createHash('sha256').update(expected).digest()
-const receivedHash = createHash('sha256').update(received).digest()
+const expectedHash = createHash("sha256").update(expected).digest();
+const receivedHash = createHash("sha256").update(received).digest();
 
-return timingSafeEqual(expectedHash, receivedHash)
+return timingSafeEqual(expectedHash, receivedHash);
 ```
 
 > El borrador comparaba longitudes primero y devolvía `false` si diferían. Eso
@@ -330,14 +389,14 @@ return timingSafeEqual(expectedHash, receivedHash)
 
 ---
 
-## 9. El gestor de versiones
+## 10. El gestor de versiones
 
 `src/server/snapshot-manager.ts` es el cerebro. Estado en el ámbito del módulo,
 es decir **de una única instancia**:
 
 ```ts
-let localVersion: string | undefined
-let nextCheckAt = 0
+let localVersion: string | undefined;
+let nextCheckAt = 0;
 ```
 
 `ensureFreshSnapshot()` decide en tres escalones:
@@ -352,7 +411,7 @@ let nextCheckAt = 0
 
 ```ts
 if (Date.now() < nextCheckAt) {
-  return
+  return;
 }
 ```
 
@@ -366,29 +425,41 @@ if (Date.now() < nextCheckAt) {
 ### Los timeouts
 
 ```ts
-const VERSION_CHECK_TIMEOUT_MS = 1_000
-const INITIAL_LOAD_TIMEOUT_MS = 10_000
+const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 3_000;
+const DEFAULT_LOAD_TIMEOUT_MS = 10_000;
 ```
+
+Ambos se pueden sobrescribir con `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` y
+`SNAPSHOT_LOAD_TIMEOUT_MS`.
 
 > **Esto no estaba en el borrador y es importante.** Sin acotar, un Redis
 > inalcanzable deja **cada** petición esperando hasta que node-redis se rinde.
 > En local eso son segundos; en Vercel es tiempo de función facturado y una
-> página colgada. Medido en este proyecto, con Redis parado: **1,05 s** con el
-> timeout puesto, frente a colgarse hasta el `TimeoutError` del cliente.
+> página colgada. Medido con Redis parado: **3,06 s** con el timeout puesto,
+> frente a colgarse hasta el `TimeoutError` del cliente.
+>
+> Por qué 3 s y no 1 s: 1 s estaba calibrado contra el Docker local, donde el
+> round trip es submilisegundo. Contra un Redis gestionado el presupuesto tiene
+> que cubrir una **reconexión**, y node-redis por sí solo permite
+> `connectTimeout ?? 5000` antes incluso de empezar el handshake TLS. Con 1 s,
+> cada reconexión registraría un fallo espurio.
 
 ### Tolerancia a fallos
 
 Los dos casos se tratan distinto **a propósito**:
 
-- **Carga inicial falla** → propaga el error → el middleware devuelve `503`. No
-  hay nada válido que servir.
+- **Redis accesible pero vacío** → se reconstruye desde Content Island, se
+  repuebla Redis y se sigue. Mira la sección 14: un plan gratuito de Redis no
+  tiene persistencia, así que esto no es hipotético.
+- **Redis inalcanzable en una instancia fría** → propaga el error → el
+  middleware devuelve `503`. No hay nada válido que servir.
 - **Comprobación posterior falla** → se registra, **se conserva el snapshot en
   memoria** y se adelanta el siguiente reintento a 30 s. Un fallo temporal de
   Redis no debe tirar la web.
 
 ---
 
-## 10. El middleware global
+## 11. El middleware global
 
 `src/start.ts`:
 
@@ -396,21 +467,21 @@ Los dos casos se tratan distinto **a propósito**:
 const snapshotMiddleware = createMiddleware().server(
   async ({ pathname, next }) => {
     if (pathname === REFRESH_ENDPOINT) {
-      return next()
+      return next();
     }
 
     try {
-      await ensureFreshSnapshot()
+      await ensureFreshSnapshot();
     } catch (error) {
-      return new Response('Content is temporarily unavailable', {
+      return new Response("Content is temporarily unavailable", {
         status: 503,
-        headers: { 'retry-after': '30', /* ... */ },
-      })
+        headers: { "retry-after": "30" /* ... */ },
+      });
     }
 
-    return next()
+    return next();
   },
-)
+);
 ```
 
 Tres cosas que conviene tener claras:
@@ -432,12 +503,12 @@ ni el handler final se ejecutan.
 
 ```ts
 const csrfMiddleware = createCsrfMiddleware({
-  filter: (context) => context.handlerType === 'serverFn',
-})
+  filter: (context) => context.handlerType === "serverFn",
+});
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [csrfMiddleware, snapshotMiddleware],
-}))
+}));
 ```
 
 TanStack Start instala su middleware CSRF por defecto **solo mientras no exista
@@ -445,11 +516,11 @@ un `startInstance`**. La condición interna mira si hay start entry, **no** si e
 instancia trae `requestMiddleware`. Es decir: **en el momento en que creas
 `src/start.ts`, pierdes el CSRF**, aunque no toques nada más.
 
-| Situación | `requestMiddleware` efectivo |
-| --- | --- |
-| Sin `src/start.ts` | `[csrfPorDefecto]` |
-| `createStart(() => ({}))` | `undefined` → **CSRF perdido** |
-| `createStart(() => ({ requestMiddleware: [mío] }))` | `[mío]` → **CSRF perdido** |
+| Situación                                           | `requestMiddleware` efectivo   |
+| --------------------------------------------------- | ------------------------------ |
+| Sin `src/start.ts`                                  | `[csrfPorDefecto]`             |
+| `createStart(() => ({}))`                           | `undefined` → **CSRF perdido** |
+| `createStart(() => ({ requestMiddleware: [mío] }))` | `[mío]` → **CSRF perdido**     |
 
 Por eso lo volvemos a añadir a mano. En desarrollo TanStack Start avisa por
 consola si falta; en producción, no.
@@ -460,21 +531,33 @@ Aunque corre en cada petición, casi siempre termina en la comparación de
 
 ---
 
-## 11. Probarlo en local
+## 12. Probarlo en local
 
 ```bash
 docker compose up -d
 npm run dev
 ```
 
-### 11.1. Redis vacío → 503
+### 11.1. Redis vacío → se recupera solo
 
 ```bash
+docker compose exec redis redis-cli FLUSHALL
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/
-# 503
+# 200
+
+docker compose exec redis redis-cli HGET "content-island:snapshot" version
+# una versión
 ```
 
-Es el comportamiento correcto: no hay snapshot válido que servir.
+La primera petición no encuentra nada en Redis, reconstruye desde Content Island
+y **repuebla Redis**. En el log verás
+`[snapshot] Redis is empty, rebuilding from Content Island`.
+
+Lo mismo ocurre si borras la clave con la aplicación en marcha: la siguiente
+comprobación pasado el intervalo la reconstruye.
+
+Solo obtienes un `503` cuando Redis está **inalcanzable** y la instancia todavía
+no tiene nada en memoria.
 
 ### 11.2. Autenticación
 
@@ -547,24 +630,90 @@ entender el modelo.
 
 ---
 
-## 12. Qué se ha verificado
+## 13. Qué se ha verificado
 
-| Escenario | Resultado |
-| --- | --- |
-| Redis vacío, `GET /` | `503` con `retry-after: 30` |
-| `POST /refresh` sin secreto / con secreto incorrecto | `401`, Redis intacto |
-| `POST /refresh` con secreto correcto | `200`, 408 067 B → 104 292 B |
-| `GET /`, `GET /cars` tras el refresco | `200` desde memoria |
-| Round-trip gzip binario por Redis | bytes idénticos, UTF-8 multibyte intacto |
-| Versión nueva dentro del intervalo | `inSync: false`, se sigue sirviendo la vieja |
-| Versión nueva pasado el intervalo | detectada y adoptada sola |
-| Redis caído, snapshot en memoria | sigue sirviendo `200` |
-| Redis caído, latencia | acotada a 1,05 s; siguientes peticiones a 35 ms |
-| Redis restaurado | vuelve a comprobar y sincroniza |
+| Escenario                                            | Resultado                                       |
+| ---------------------------------------------------- | ----------------------------------------------- |
+| Redis vacío al arrancar, `GET /`                     | `200` — reconstruido desde Content Island, Redis repoblado |
+| Clave borrada en caliente                            | la siguiente comprobación la reconstruye y repuebla |
+| Redis inalcanzable en instancia fría                 | `503` con `retry-after: 30`                     |
+| `POST /refresh` sin secreto / con secreto incorrecto | `401`, Redis intacto                            |
+| `POST /refresh` con secreto correcto                 | `200`, 408 067 B → 104 292 B                    |
+| `GET /`, `GET /cars` tras el refresco                | `200` desde memoria                             |
+| Round-trip gzip binario por Redis                    | bytes idénticos, UTF-8 multibyte intacto        |
+| Versión nueva dentro del intervalo                   | `inSync: false`, se sigue sirviendo la vieja    |
+| Versión nueva pasado el intervalo                    | detectada y adoptada sola                       |
+| Redis caído, snapshot en memoria                     | sigue sirviendo `200`                           |
+| Redis caído, latencia                                | acotada a 3,06 s; siguientes peticiones a 41 ms |
+| Solo `KV_URL`, sin `REDIS_URL`                       | conecta y registra `[redis] using KV_URL`       |
+| Sin ninguna cadena de conexión                       | error nombrando las tres variables aceptadas    |
+| Redis restaurado                                     | vuelve a comprobar y sincroniza                 |
 
 ---
 
-## 13. Límites conocidos
+## 14. Compatibilidad con el Redis del Marketplace de Vercel
+
+El Marketplace ofrece dos integraciones de Redis: **Redis Cloud** (oficial) y
+**Upstash**. Este proyecto apunta a **Redis Cloud**, y el código no necesita
+ningún cambio para hablar con él. Pero hay cosas que conviene saber antes de
+`02-deploy`.
+
+### Lo que ya funciona
+
+| Punto | Por qué |
+| --- | --- |
+| Valores binarios | RESP sobre TCP es binario-seguro: los strings de Redis son secuencias de bytes. Verificado en local: bytes idénticos y gunzip sin pérdida con UTF-8 multibyte. |
+| TLS | node-redis activa TLS solo a partir del esquema de la URL (`socket.tls = protocol === 'rediss:'`). Una cadena `rediss://` funciona sin configurar nada. |
+| Tamaño | 104 KB comprimidos. Muy por debajo del límite de valor o de request de cualquier plan. |
+| Expulsión de claves | La página de la integración Redis Cloud + Vercel dice que la política por defecto es `no eviction`, así que la clave del snapshot no se descarta por presión de memoria. |
+| `REDIS_URL` | Redis Cloud te la inyecta. El código acepta además `REDIS_TLS_URL` y `KV_URL` como alternativas. |
+| Una conexión por instancia | Fluid compute (activo por defecto desde abril de 2025) comparte una instancia entre invocaciones concurrentes, y nuestro estado de ámbito de módulo es justo ese global compartido. Una instancia es una conexión TCP, no una por petición. |
+
+`attachDatabasePool()` de `@vercel/functions` está conectado en
+`src/server/redis.ts`. Mantiene viva la instancia lo justo para liberar las
+conexiones inactivas antes de que Vercel la suspenda: una instancia suspendida no
+ejecuta sus propios temporizadores, así que el socket se quedaría colgando. Fuera
+de Vercel no hace nada.
+
+> Su tipo de TypeScript está etiquetado como "Redis (ioredis)", pero la
+> detección en tiempo de ejecución mira `options.socket`, que es la forma de
+> **node-redis**. Verificado contra nuestro cliente.
+
+### El plan gratuito es más estrecho de lo que parece
+
+| | Free 30 MB | 250 MB |
+| --- | --- | --- |
+| Conexiones concurrentes | **30** | 256 |
+| Rendimiento máximo | **100 ops/s** | 1 000 ops/s |
+| Persistencia | **No** | Sí |
+| TLS | **No** | Sí |
+
+Dos consecuencias que conviene interiorizar:
+
+**El plan gratuito no tiene TLS.** Literal de la documentación de Redis: *"TLS
+is not available for Free Redis Cloud Essentials plans."* Tu cadena de conexión
+será `redis://`, en claro por Internet, con la contraseña y el snapshot dentro.
+Vale para un tutorial, no para nada serio.
+
+**100 ops/s son unos 100 KiB/s.** Nuestro snapshot comprimido son 104 KB, así
+que cada arranque en frío consume alrededor de un segundo del ancho de banda de
+toda la base de datos. Por esto justamente el diseño sondea un campo `version`
+diminuto en vez del snapshot: la transferencia cara solo ocurre cuando el
+contenido ha cambiado de verdad.
+
+Para cualquier cosa que no sea una demo, empieza en el plan de 250 MB: es donde
+aparecen TLS, persistencia y un número de conexiones utilizable.
+
+> **Si algún día te pasas a Upstash:** también habla TCP (`rediss://`, con TLS
+> obligatorio), pero su propia documentación avisa de que los clientes TCP
+> *"can run into connection issues"* en serverless, y su cliente recomendado
+> `@upstash/redis` es HTTP/JSON y **no es binario-seguro**: corrompería el gzip
+> o te obligaría a Base64 (+33 % de tamaño). Además no parece inyectar
+> `REDIS_URL`; tendrías que copiar la URL TCP de su consola a mano.
+
+---
+
+## 15. Límites conocidos
 
 **`exportedAt` cambia en cada export, publiques o no.** Dos exports seguidos sin
 tocar contenido dan versiones distintas (`14:19:01.116Z` → `14:19:18.216Z`
@@ -587,9 +736,15 @@ entre dos proyectos** de Content Island: para eso está
 servir hasta 5 min una versión anterior. Bajarlo mejora la frescura y aumenta
 los `HGET`. Solo se descarga `version`, que son unas decenas de bytes.
 
-**Redis es dependencia crítica para arrancar.** Una vez cargado el snapshot,
-Content Island sale del camino de lectura. Pero una instancia nueva **necesita**
-Redis para su primera copia. Sin Redis y sin memoria, `503`.
+**Un Redis vacío se recupera solo; uno inalcanzable no.** Si la clave no está
+—primer arranque, o un plan sin persistencia que se reinició— la instancia se
+reconstruye directamente desde Content Island y repuebla Redis. Pero si Redis
+está *inalcanzable* y la instancia no tiene nada en memoria, sigue sin haber
+nada que servir: `503`. Ojo: el camino de recuperación no tiene cerrojo
+distribuido, así que varias instancias arrancando a la vez contra un Redis vacío
+harán cada una su propio `exportSnapshot()`. Es idempotente y el `HSET` es
+atómico, así que el resultado es correcto, solo derrochón. Un cerrojo con
+`SET NX EX` sería el endurecimiento natural.
 
 **Tamaño.** Los snapshots pueden llegar a 16 MB. Guardamos `compressedSize`
 precisamente para poder vigilarlo antes de chocar con los límites del
@@ -597,7 +752,7 @@ proveedor.
 
 ---
 
-## 14. Qué queda para `02-deploy`
+## 16. Qué queda para `02-deploy`
 
 - Redis gestionado desde el Marketplace de Vercel.
 - Variables de entorno en Vercel y `SNAPSHOT_CHECK_INTERVAL_MS` realista.
@@ -608,7 +763,7 @@ proveedor.
 
 ---
 
-## 15. Referencias
+## 17. Referencias
 
 - [Dynamic Snapshots — visión general](https://docs.contentisland.net/dynamic-snapshots/overview/)
 - [Snapshot mode en Content Island](https://www.contentisland.net/es/blog/new-spnapshot-mode-content-island/)

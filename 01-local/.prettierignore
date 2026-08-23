@@ -1,0 +1,4 @@
+# Ver el .prettierignore de la raíz. Se duplica aquí porque Prettier resuelve el
+# fichero de ignorados desde la raíz del workspace, y esa carpeta puede abrirse
+# sola en el editor.
+guion.md

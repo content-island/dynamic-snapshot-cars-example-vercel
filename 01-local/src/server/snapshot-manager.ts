@@ -8,8 +8,29 @@ const ERROR_RETRY_INTERVAL_MS = 30_000
 // Upper bounds on how long a request may wait on Redis. Without them an
 // unreachable Redis makes every request hang until node-redis gives up, which
 // on a serverless platform is billed function time and a stalled page.
-const VERSION_CHECK_TIMEOUT_MS = 1_000
-const INITIAL_LOAD_TIMEOUT_MS = 10_000
+//
+// 3s for the check, not 1s: against a managed Redis the budget has to cover a
+// reconnection, and node-redis alone allows `connectTimeout ?? 5000` before a
+// TLS handshake even starts. 1s was calibrated against local Docker and would
+// log spurious failures in production.
+const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 3_000
+const DEFAULT_LOAD_TIMEOUT_MS = 10_000
+
+function readTimeout(name: string, fallback: number): number {
+  const configured = Number(process.env[name])
+
+  return Number.isFinite(configured) && configured > 0 ? configured : fallback
+}
+
+const VERSION_CHECK_TIMEOUT_MS = readTimeout(
+  'SNAPSHOT_VERSION_CHECK_TIMEOUT_MS',
+  DEFAULT_VERSION_CHECK_TIMEOUT_MS,
+)
+
+const LOAD_TIMEOUT_MS = readTimeout(
+  'SNAPSHOT_LOAD_TIMEOUT_MS',
+  DEFAULT_LOAD_TIMEOUT_MS,
+)
 
 const configuredInterval = Number(process.env.SNAPSHOT_CHECK_INTERVAL_MS)
 
@@ -73,7 +94,11 @@ async function checkCurrentVersion(): Promise<void> {
   )
 
   if (!remoteVersion) {
-    throw new Error('There is no snapshot version in Redis')
+    // The key vanished under us — a Redis plan with no persistence that
+    // restarted, or somebody flushed it. The loader rebuilds from Content
+    // Island and repopulates Redis rather than letting the site go down.
+    await adoptSnapshot('Redis is empty', LOAD_TIMEOUT_MS)
+    return
   }
 
   if (remoteVersion === localVersion) {
@@ -84,7 +109,7 @@ async function checkCurrentVersion(): Promise<void> {
   // refreshSnapshot() runs the loader again, validates the JSON, rejects a
   // snapshot from another project or view, and only swaps it in when it is
   // strictly newer than the active one.
-  await adoptSnapshot('new version detected', INITIAL_LOAD_TIMEOUT_MS)
+  await adoptSnapshot('new version detected', LOAD_TIMEOUT_MS)
 }
 
 export async function ensureFreshSnapshot(): Promise<void> {
@@ -94,7 +119,7 @@ export async function ensureFreshSnapshot(): Promise<void> {
     // their own copy out of Redis.
     initializationPromise ??= adoptSnapshot(
       'initial load',
-      INITIAL_LOAD_TIMEOUT_MS,
+      LOAD_TIMEOUT_MS,
     ).catch((error) => {
       initializationPromise = undefined
       throw error

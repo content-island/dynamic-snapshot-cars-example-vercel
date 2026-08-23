@@ -1,32 +1,55 @@
+import { attachDatabasePool } from '@vercel/functions'
 import { RESP_TYPES, createClient } from 'redis'
 
 type RedisClient = ReturnType<typeof createClient>
+
+/**
+ * Managed Redis providers inject the connection string under their own name.
+ * Redis Cloud on Vercel sets `REDIS_URL`; the others are accepted so a change of
+ * provider is configuration rather than a code edit.
+ */
+const REDIS_URL_ENV_VARS = ['REDIS_URL', 'REDIS_TLS_URL', 'KV_URL'] as const
 
 let client: RedisClient | undefined
 let bufferClient: ReturnType<RedisClient['withTypeMapping']> | undefined
 let connectionPromise: Promise<unknown> | undefined
 
-function readRedisUrl(): string {
-  const redisUrl = process.env.REDIS_URL
+function readRedisUrl(): { url: string; source: string } {
+  for (const name of REDIS_URL_ENV_VARS) {
+    const url = process.env[name]
 
-  if (!redisUrl) {
-    throw new Error('REDIS_URL is not configured')
+    if (url) {
+      return { url, source: name }
+    }
   }
 
-  return redisUrl
+  throw new Error(
+    `No Redis connection string found. Set one of: ${REDIS_URL_ENV_VARS.join(', ')}`,
+  )
 }
 
-// The client is created on first use, not at module load: a missing REDIS_URL
-// must fail the request that needs Redis, not the bundle evaluation.
+// The client is created on first use, not at module load: a missing connection
+// string must fail the request that needs Redis, not the bundle evaluation.
 function getClient(): RedisClient {
   if (!client) {
-    client = createClient({ url: readRedisUrl() })
+    const { url, source } = readRedisUrl()
+
+    client = createClient({ url })
 
     // node-redis emits 'error' on every reconnect attempt. Without a listener
     // Node treats it as an unhandled 'error' event and kills the process.
     client.on('error', (error) => {
       console.error('[redis] connection error', error)
     })
+
+    // Keeps the Vercel instance alive long enough to release idle connections
+    // before it is suspended. A suspended instance never fires its own timers,
+    // so its socket would linger until the server times it out — and Redis
+    // Cloud's free tier only allows 30 of them. No-op outside Vercel.
+    attachDatabasePool(client)
+
+    // Never log the URL itself: it carries the password.
+    console.log(`[redis] using ${source} (tls: ${url.startsWith('rediss://')})`)
   }
 
   return client

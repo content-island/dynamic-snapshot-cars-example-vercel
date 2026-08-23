@@ -138,8 +138,13 @@ container restart, which you will appreciate while developing.
 ## 4. Dependencies and environment
 
 ```bash
-npm install redis
+npm install redis @vercel/functions
 ```
+
+`redis` is the official Redis client for Node. `@vercel/functions` holds helpers
+for code running inside a Vercel Function; we use exactly one of them,
+`attachDatabasePool` (see section 6). It is a no-op outside Vercel, so it does
+not get in the way locally.
 
 `zlib`, `util` and `crypto` ship with Node.
 
@@ -165,7 +170,61 @@ Redis instance without clobbering each other. Leave it empty and the key is
 
 ---
 
-## 5. The Redis connection
+## 5. Keeping `src/server/` out of the browser
+
+Everything under `src/server/` handles secrets: the Content Island token, the
+Redis URL (password included) and the refresh endpoint's secret. None of it may
+end up in the client bundle.
+
+**In TanStack Start code is isomorphic by default** — its own guide flags this as
+*CRITICAL*: "All code is ISOMORPHIC by default". There is no automatic split by
+folder. You have to declare it.
+
+Declare it in `vite.config.ts`:
+
+```ts
+tanstackStart({
+  importProtection: {
+    client: {
+      files: ["**/src/server/**"],
+    },
+  },
+});
+```
+
+If anyone imports from `src/server/` in a component, **the build fails** with the
+full trace of who imported what:
+
+```text
+[import-protection] Import denied in client environment
+
+  Denied by file pattern: **/src/server/**
+  Importer: src/routes/index.tsx:14:29
+  Import: "#/server/probe"
+  Resolved: src/server/probe.ts
+```
+
+### Why the folder and not `*.server.ts`
+
+TanStack Start ships a `*.server.*` convention that works just as well. But it
+only protects the files you remembered to rename. Protecting the folder also
+covers the ones that do not exist yet.
+
+This is not theoretical. Measured in this project, importing a `src/server/probe.ts`
+holding a single constant from a client component:
+
+| | Build | Reaches the browser? |
+| --- | --- | --- |
+| Without the rule | **passes, green** | **yes — the constant landed in `.output/public/assets/*.js`** |
+| With the rule | fails | no |
+
+The current code did not leak only because it drags in `node:zlib` and
+`node:crypto`, which breaks the client bundle for an unrelated reason. A server
+file with no Node dependencies — a constant, a `fetch` — leaked **silently**.
+
+---
+
+## 6. The Redis connection
 
 `src/server/redis.ts` exposes three things: the client, a twin client that
 returns `Buffer`, and a function that guarantees a connection.
@@ -223,7 +282,7 @@ export async function ensureRedisReady(): Promise<void> {
 
 ---
 
-## 6. The store: gzip plus one `HSET`
+## 7. The store: gzip plus one `HSET`
 
 `src/server/snapshot-store.ts`. All the published state lives in **a single
 hash**:
@@ -277,7 +336,7 @@ old code fails clearly instead of exploding inside `gunzip`.
 
 ---
 
-## 7. The client in snapshot mode
+## 8. The client in snapshot mode
 
 `src/common/api/content-island-client.ts`:
 
@@ -303,7 +362,7 @@ snapshot.
 
 ---
 
-## 8. The endpoint that updates Redis
+## 9. The endpoint that updates Redis
 
 `src/routes/api.snapshot.refresh.ts`. It does four things: validate the secret,
 download via `exportSnapshot()`, compress, and store.
@@ -333,7 +392,7 @@ return timingSafeEqual(expectedHash, receivedHash)
 
 ---
 
-## 9. The version manager
+## 10. The version manager
 
 `src/server/snapshot-manager.ts` is the brain. State at module scope, which
 means **per instance**:
@@ -367,29 +426,41 @@ if (Date.now() < nextCheckAt) {
 ### The timeouts
 
 ```ts
-const VERSION_CHECK_TIMEOUT_MS = 1_000
-const INITIAL_LOAD_TIMEOUT_MS = 10_000
+const DEFAULT_VERSION_CHECK_TIMEOUT_MS = 3_000
+const DEFAULT_LOAD_TIMEOUT_MS = 10_000
 ```
+
+Both are overridable with `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` and
+`SNAPSHOT_LOAD_TIMEOUT_MS`.
 
 > **This was not in the draft and it matters.** Unbounded, an unreachable Redis
 > leaves **every** request waiting until node-redis gives up. Locally that is
-> seconds; on Vercel it is billed function time and a stalled page. Measured in
-> this project with Redis stopped: **1.05 s** with the timeout in place, versus
-> hanging until the client's own `TimeoutError`.
+> seconds; on Vercel it is billed function time and a stalled page. Measured
+> with Redis stopped: **3.06 s** with the timeout in place, versus hanging until
+> the client's own `TimeoutError`.
+>
+> Why 3 s and not 1 s: 1 s was calibrated against local Docker, where a round
+> trip is sub-millisecond. Against a managed Redis the budget has to cover a
+> **reconnection**, and node-redis alone allows `connectTimeout ?? 5000` before
+> a TLS handshake even begins. At 1 s every reconnect would log a spurious
+> failure.
 
 ### Fault tolerance
 
 The two cases are handled differently **on purpose**:
 
-- **Initial load fails** → propagate the error → the middleware returns `503`.
-  There is nothing valid to serve.
+- **Redis is reachable but empty** → rebuild from Content Island, repopulate
+  Redis, carry on. See section 14: a free Redis plan has no persistence, so this
+  is not a hypothetical.
+- **Redis is unreachable on a cold instance** → propagate the error → the
+  middleware returns `503`. There is nothing valid to serve.
 - **A later check fails** → log it, **keep the in-memory snapshot**, and bring
   the next retry forward to 30 s. A transient Redis failure must not take the
   site down.
 
 ---
 
-## 10. The global middleware
+## 11. The global middleware
 
 `src/start.ts`:
 
@@ -462,21 +533,33 @@ comparison in memory.
 
 ---
 
-## 11. Testing it locally
+## 12. Testing it locally
 
 ```bash
 docker compose up -d
 npm run dev
 ```
 
-### 11.1. Empty Redis → 503
+### 11.1. Empty Redis → self-heals
 
 ```bash
+docker compose exec redis redis-cli FLUSHALL
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/
-# 503
+# 200
+
+docker compose exec redis redis-cli HGET "content-island:snapshot" version
+# a version string
 ```
 
-This is correct behaviour: there is no valid snapshot to serve.
+The first request finds nothing in Redis, rebuilds from Content Island and
+**repopulates Redis**. The log shows
+`[snapshot] Redis is empty, rebuilding from Content Island`.
+
+The same happens if the key is deleted while the app is running: the next check
+past the interval rebuilds it.
+
+You only get a `503` when Redis is **unreachable** and the instance has nothing
+in memory yet.
 
 ### 11.2. Authentication
 
@@ -549,11 +632,13 @@ understand the model.
 
 ---
 
-## 12. What has been verified
+## 13. What has been verified
 
 | Scenario | Result |
 | --- | --- |
-| Empty Redis, `GET /` | `503` with `retry-after: 30` |
+| Empty Redis on boot, `GET /` | `200` — rebuilt from Content Island, Redis repopulated |
+| Key deleted while running | next check past the interval rebuilds and repopulates |
+| Redis unreachable on a cold instance | `503` with `retry-after: 30` |
 | `POST /refresh` with no secret / wrong secret | `401`, Redis untouched |
 | `POST /refresh` with the right secret | `200`, 408,067 B → 104,292 B |
 | `GET /`, `GET /cars` after the refresh | `200` from memory |
@@ -561,12 +646,73 @@ understand the model.
 | New version within the interval | `inSync: false`, still serving the old one |
 | New version past the interval | detected and adopted on its own |
 | Redis down, snapshot in memory | keeps serving `200` |
-| Redis down, latency | bounded to 1.05 s; subsequent requests at 35 ms |
+| Redis down, latency | bounded to 3.06 s; subsequent requests at 41 ms |
+| Only `KV_URL` set, no `REDIS_URL` | connects, logs `[redis] using KV_URL` |
+| No connection string at all | error naming all three accepted variables |
 | Redis restored | checks again and syncs |
 
 ---
 
-## 13. Known limits
+## 14. Compatibility with Vercel Marketplace Redis
+
+The Marketplace offers two Redis integrations: **Redis Cloud** (official) and
+**Upstash**. This project targets **Redis Cloud**, and the code needs no changes
+to talk to it — but there are things worth knowing before `02-deploy`.
+
+### What already works
+
+| Point | Why |
+| --- | --- |
+| Binary values | RESP over TCP is binary-safe: Redis strings are byte sequences. Verified locally — identical bytes, lossless gunzip with multi-byte UTF-8. |
+| TLS | node-redis enables TLS purely from the URL scheme (`socket.tls = protocol === 'rediss:'`). A `rediss://` string just works, no configuration. |
+| Size | 104 KB compressed. Far below any plan's value or request limit. |
+| Key eviction | The Redis Cloud + Vercel integration page states the eviction policy defaults to `no eviction`, so the snapshot key is not dropped under memory pressure. |
+| `REDIS_URL` | Redis Cloud injects it for you. The code also accepts `REDIS_TLS_URL` and `KV_URL` as fallbacks. |
+| One connection per instance | Fluid compute (on by default since April 2025) shares a single instance across concurrent invocations, and our module-scope state is exactly that shared global. One instance means one TCP connection, not one per request. |
+
+`attachDatabasePool()` from `@vercel/functions` is wired into
+`src/server/redis.ts`. It keeps the instance alive long enough to release idle
+connections before Vercel suspends it — a suspended instance never fires its own
+timers, so its socket would otherwise linger. It is a no-op outside Vercel.
+
+> Its TypeScript type is labelled "Redis (ioredis)", but the runtime detection
+> actually duck-types on `options.socket`, which is **node-redis**'s shape.
+> Verified against our client.
+
+### The free tier is tighter than it looks
+
+| | Free 30 MB | 250 MB |
+| --- | --- | --- |
+| Concurrent connections | **30** | 256 |
+| Max throughput | **100 ops/s** | 1,000 ops/s |
+| Persistence | **No** | Yes |
+| TLS | **No** | Yes |
+
+Two consequences worth internalising:
+
+**No TLS on the free plan.** Redis's own docs: *"TLS is not available for Free
+Redis Cloud Essentials plans."* Your connection string will be `redis://`, in
+the clear over the public internet — password and snapshot included. Fine for a
+tutorial, not for anything real.
+
+**100 ops/s is roughly 100 KiB/s.** Our compressed snapshot is 104 KB, so every
+cold start consumes about one second of the whole database's bandwidth. This is
+precisely why the design polls a tiny `version` field instead of the snapshot:
+the expensive transfer only happens when the content actually changed.
+
+For anything beyond a demo, start at the 250 MB tier — it is where TLS,
+persistence and a workable connection count begin.
+
+> **If you ever switch to Upstash:** it also speaks TCP (`rediss://`, TLS
+> mandatory), but its own docs warn that TCP clients *"can run into connection
+> issues"* in serverless, and its recommended `@upstash/redis` client is
+> HTTP/JSON and **not binary-safe** — it would corrupt the gzip or force Base64
+> (+33 % size). It also does not appear to inject `REDIS_URL`; you would copy the
+> TCP URL from its console by hand.
+
+---
+
+## 15. Known limits
 
 **`exportedAt` changes on every export, whether or not you publish.** Two
 back-to-back exports with no content change produce different versions
@@ -589,16 +735,21 @@ Content Island projects** — that is what `CONTENT_ISLAND_PROJECT_ID` is for.
 previous version for up to 5 min. Lowering it improves freshness and increases
 the number of `HGET`s. Only `version` is downloaded, which is a few dozen bytes.
 
-**Redis is a critical dependency at startup.** Once the snapshot is loaded,
-Content Island leaves the read path. But a new instance **needs** Redis for its
-first copy. With no Redis and no memory, `503`.
+**An empty Redis heals itself; an unreachable one does not.** If the key is
+missing — first boot, or a plan without persistence that restarted — the
+instance rebuilds straight from Content Island and repopulates Redis. But if
+Redis is *unreachable* and the instance has nothing in memory, there is still
+nothing to serve: `503`. Note the recovery path has no distributed lock, so
+several instances starting at once against an empty Redis will each run their
+own `exportSnapshot()`. It is idempotent and the `HSET` is atomic, so the result
+is correct — just wasteful. A `SET NX EX` lock is the natural hardening.
 
 **Size.** Snapshots can reach 16 MB. We store `compressedSize` precisely so you
 can watch it before hitting your provider's limits.
 
 ---
 
-## 14. What is left for `02-deploy`
+## 16. What is left for `02-deploy`
 
 - Managed Redis from the Vercel Marketplace.
 - Environment variables on Vercel and a realistic `SNAPSHOT_CHECK_INTERVAL_MS`.
@@ -609,7 +760,7 @@ can watch it before hitting your provider's limits.
 
 ---
 
-## 15. References
+## 17. References
 
 - [Dynamic Snapshots — overview](https://docs.contentisland.net/dynamic-snapshots/overview/)
 - [Snapshot mode in Content Island](https://www.contentisland.net/es/blog/new-spnapshot-mode-content-island/)
