@@ -1,5 +1,7 @@
 # Dynamic Snapshot en Vercel
 
+*[English version](./README.md)*
+
 # Paso 0: Crea un repositorio de GitHub con el código de tu proyecto
 
 Antes de empezar, debes de tener el código de `01-local` subido en un repositorio de GitHub. Es el punto de partida para este ejemplo. El código es el mismo, pero ahora toca desplegarlo en Vercel junto con Redis.
