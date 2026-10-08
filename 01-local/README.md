@@ -390,6 +390,53 @@ return timingSafeEqual(expectedHash, receivedHash)
 > always gives you 32 bytes, and the comparison leaks neither content nor
 > length.
 
+### The diagnostics endpoint: `snapshot-info`
+
+`src/routes/api.content-island.snapshot-info.ts` already existed in `00-start`,
+but it only returned `getSnapshotInfo()`. With several instances that falls
+short: it tells you which snapshot **this** instance holds in memory, not
+whether it is the published one. We extend it to read Redis's version too and
+compare both:
+
+```diff
+ import { createFileRoute } from '@tanstack/react-router'
+
+ import { contentIslandClient } from '#/common/api/content-island-client'
++import { getSnapshotKey, getStoredSnapshotVersion } from '#/server/snapshot-store'
+
+ export const Route = createFileRoute('/api/content-island/snapshot-info')({
+   server: {
+     handlers: {
+       GET: async () => {
+-        const info = await contentIslandClient.getSnapshotInfo()
+-        return Response.json(info) // { schemaVersion, exportedAt, projectId, view }
++        const [local, remoteVersion] = await Promise.all([
++          contentIslandClient.getSnapshotInfo(),
++          getStoredSnapshotVersion(),
++        ])
++
++        return Response.json({
++          redisKey: getSnapshotKey(),
++          local,
++          remoteVersion,
++          inSync: local.exportedAt === remoteVersion,
++        })
+       },
+     },
+   },
+ })
+```
+
+- `local`: what `getSnapshotInfo()` returns. Since the client is now in snapshot
+  mode, it describes the snapshot this instance holds **in memory**.
+- `remoteVersion`: the `version` field of the Redis hash, read with
+  `getStoredSnapshotVersion()` (the same cheap read the version manager uses).
+- `inSync`: compares both. It works because we store
+  `snapshot.meta.exportedAt` as the version, which is exactly what
+  `getSnapshotInfo()` returns as `exportedAt`.
+- `redisKey`: the key being queried, handy when you use
+  `CONTENT_ISLAND_PROJECT_ID`.
+
 ---
 
 ## 10. The version manager

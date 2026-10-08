@@ -387,6 +387,53 @@ return timingSafeEqual(expectedHash, receivedHash);
 > lados obtienes siempre 32 bytes y la comparación no filtra ni contenido ni
 > longitud.
 
+### El endpoint de diagnóstico: `snapshot-info`
+
+`src/routes/api.content-island.snapshot-info.ts` ya existía en `00-start`, pero
+solo devolvía `getSnapshotInfo()`. Con varias instancias eso se queda corto:
+dice qué snapshot tiene **esta** instancia en memoria, pero no si es el que hay
+publicado. Lo ampliamos para que lea también la versión de Redis y compare las
+dos:
+
+```diff
+ import { createFileRoute } from '@tanstack/react-router'
+
+ import { contentIslandClient } from '#/common/api/content-island-client'
++import { getSnapshotKey, getStoredSnapshotVersion } from '#/server/snapshot-store'
+
+ export const Route = createFileRoute('/api/content-island/snapshot-info')({
+   server: {
+     handlers: {
+       GET: async () => {
+-        const info = await contentIslandClient.getSnapshotInfo()
+-        return Response.json(info) // { schemaVersion, exportedAt, projectId, view }
++        const [local, remoteVersion] = await Promise.all([
++          contentIslandClient.getSnapshotInfo(),
++          getStoredSnapshotVersion(),
++        ])
++
++        return Response.json({
++          redisKey: getSnapshotKey(),
++          local,
++          remoteVersion,
++          inSync: local.exportedAt === remoteVersion,
++        })
+       },
+     },
+   },
+ })
+```
+
+- `local`: lo que devuelve `getSnapshotInfo()`. Como el cliente ya está en modo
+  snapshot, describe el snapshot que esta instancia tiene **en memoria**.
+- `remoteVersion`: el campo `version` del hash de Redis, leído con
+  `getStoredSnapshotVersion()` (la misma lectura barata que usa el gestor de
+  versiones).
+- `inSync`: compara las dos. Funciona porque guardamos como versión
+  `snapshot.meta.exportedAt`, que es justo lo que `getSnapshotInfo()` devuelve
+  en `exportedAt`.
+- `redisKey`: la clave consultada, útil cuando usas `CONTENT_ISLAND_PROJECT_ID`.
+
 ---
 
 ## 10. El gestor de versiones

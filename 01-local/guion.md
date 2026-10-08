@@ -68,8 +68,9 @@ lleva encima su ruta.
 | 4 | `src/server/snapshot-store.ts` | 6 | nuevo |
 | 5 | `src/common/api/content-island-client.ts` | 7 | **se modifica** |
 | 6 | `src/routes/api.snapshot.refresh.ts` | 8 | nuevo |
-| 7 | `src/server/snapshot-manager.ts` | 9 | nuevo |
-| 8 | `src/start.ts` | 9 | nuevo |
+| 7 | `src/routes/api.content-island.snapshot-info.ts` | 8 | **se modifica** · diagnóstico |
+| 8 | `src/server/snapshot-manager.ts` | 9 | nuevo |
+| 9 | `src/start.ts` | 9 | nuevo |
 
 Los pods (`src/pods/car-list/api/car-list.api.ts` y
 `src/pods/car-detail/api/car-detail.api.ts`) **no se tocan**. Ese es el remate
@@ -1134,6 +1135,62 @@ return timingSafeEqual(expectedHash, receivedHash);
 **Ojo:** este trozo es oro para la audiencia. Es un patrón que van a poder usar en
 cualquier webhook que escriban en su vida. No lo cortes en edición.
 
+### 8.1 El endpoint de diagnóstico
+
+**En pantalla:** abres `src/routes/api.content-island.snapshot-info.ts`.
+
+**Dices:**
+
+> Ya que estamos con endpoints, uno que ya teníamos en el proyecto de partida.
+> Hasta ahora devolvía la información del snapshot y poco más. Pero con varias
+> instancias, saber qué snapshot tengo en memoria no me basta: quiero saber si es
+> el que está publicado en Redis.
+
+**`src/routes/api.content-island.snapshot-info.ts`** · ya existe · **el cambio, en diff**
+
+```diff
+ import { createFileRoute } from '@tanstack/react-router'
+
+ import { contentIslandClient } from '#/common/api/content-island-client'
++import { getSnapshotKey, getStoredSnapshotVersion } from '#/server/snapshot-store'
+
+ export const Route = createFileRoute('/api/content-island/snapshot-info')({
+   server: {
+     handlers: {
+       GET: async () => {
+-        const info = await contentIslandClient.getSnapshotInfo()
+-        return Response.json(info) // { schemaVersion, exportedAt, projectId, view }
++        const [local, remoteVersion] = await Promise.all([
++          contentIslandClient.getSnapshotInfo(),
++          getStoredSnapshotVersion(),
++        ])
++
++        return Response.json({
++          redisKey: getSnapshotKey(),
++          local,
++          remoteVersion,
++          inSync: local.exportedAt === remoteVersion,
++        })
+       },
+     },
+   },
+ })
+```
+
+**Dices:**
+
+> Dos lecturas en paralelo. `getSnapshotInfo` me dice qué snapshot tiene **esta**
+> instancia en memoria, como el cliente ya está en modo snapshot, no sale a la red.
+> Y `getStoredSnapshotVersion` lee la versión que hay en Redis, la misma lectura
+> barata que hicimos en `snapshot-store`.
+>
+> Si coinciden, `inSync` es `true`. Y coinciden porque como versión guardamos
+> justo el `exportedAt` del snapshot. Este endpoint nos lo vamos a guardar para la
+> demo final, porque es el que nos va a dejar **ver** cómo se propaga un cambio.
+
+**Ojo:** no hace falta crear nada nuevo en `snapshot-store.ts`: `getSnapshotKey`
+y `getStoredSnapshotVersion` ya están del bloque 6.
+
 ---
 
 ## Bloque 9 · Que cada instancia se entere · ~4 min
@@ -1573,9 +1630,9 @@ curl -s http://localhost:3000/api/content-island/snapshot-info | jq
 
 **Dices:**
 
-> Antes de tocar nada, fíjate en este endpoint. Me dice dos versiones: la que está
-> sirviendo esta instancia desde memoria, y la que hay publicada en Redis. Ahora
-> mismo coinciden.
+> Antes de tocar nada, recupero el endpoint de diagnóstico que retocamos antes. Me
+> dice dos versiones: la que está sirviendo esta instancia desde memoria, y la que
+> hay publicada en Redis. Ahora mismo coinciden.
 
 **En pantalla:** cambias el precio del coche en Content Island y **publicas**.
 Luego lanzas el refresco.

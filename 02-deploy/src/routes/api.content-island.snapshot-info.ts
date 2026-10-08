@@ -5,8 +5,8 @@ import { getSnapshotKey, getStoredSnapshotVersion } from '#/server/snapshot-stor
 
 /**
  * Diagnostics. `local` is the snapshot this instance is serving from memory;
- * `remote` is what Redis currently publishes. They differ for at most one
- * check interval after a refresh — that gap is the consistency window.
+ * `remoteVersion` is what Redis currently publishes. They differ for at most
+ * one check interval after a refresh — that gap is the consistency window.
  */
 export const Route = createFileRoute('/api/content-island/snapshot-info')({
   server: {
