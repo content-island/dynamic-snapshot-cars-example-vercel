@@ -63,14 +63,15 @@ lleva encima su ruta.
 | # | Fichero | Bloque | Qué |
 | --- | --- | --- | --- |
 | 1 | `docker-compose.yml` | 5 | nuevo |
-| 2 | `vite.config.ts` | 6 | **se modifica** · import protection |
-| 3 | `src/server/redis.ts` | 6 | nuevo · va **antes**: el siguiente lo importa |
-| 4 | `src/server/snapshot-store.ts` | 6 | nuevo |
-| 5 | `src/common/api/content-island-client.ts` | 7 | **se modifica** |
-| 6 | `src/routes/api.snapshot.refresh.ts` | 8 | nuevo |
-| 7 | `src/routes/api.content-island.snapshot-info.ts` | 8 | **se modifica** · diagnóstico |
-| 8 | `src/server/snapshot-manager.ts` | 9 | nuevo |
-| 9 | `src/start.ts` | 9 | nuevo |
+| 2 | `.env.example` / `.env` | 5 | **se modifica** · variables nuevas |
+| 3 | `vite.config.ts` | 6 | **se modifica** · import protection |
+| 4 | `src/server/redis.ts` | 6 | nuevo · va **antes**: el siguiente lo importa |
+| 5 | `src/server/snapshot-store.ts` | 6 | nuevo |
+| 6 | `src/common/api/content-island-client.ts` | 7 | **se modifica** |
+| 7 | `src/routes/api.snapshot.refresh.ts` | 8 | nuevo |
+| 8 | `src/routes/api.content-island.snapshot-info.ts` | 8 | **se modifica** · diagnóstico |
+| 9 | `src/server/snapshot-manager.ts` | 9 | nuevo |
+| 10 | `src/start.ts` | 9 | nuevo |
 
 Los pods (`src/pods/car-list/api/car-list.api.ts` y
 `src/pods/car-detail/api/car-detail.api.ts`) **no se tocan**. Ese es el remate
@@ -496,6 +497,53 @@ npm install redis @vercel/functions
 local, puedes dejar `attachDatabasePool` fuera de `redis.ts` y añadirlo en
 `02-deploy`, que es donde de verdad hace algo. En local es un no-op. La explicación
 de 6.1 te vale igual, solo cambia dónde la cuentas.
+
+### 5.3 Configurar las variables de entorno
+
+**En pantalla:** abres `.env.example`, **no** el `.env` real.
+
+**Dices:**
+
+> Antes de escribir código, las variables de entorno. En el proyecto de partida
+> solo teníamos el token de Content Island. Ahora necesitamos alguna más.
+
+**`.env.example`** · ya existe · **lo que cambia**
+
+```env
+# Ya estaba en 00-start, sin cambios
+CONTENT_ISLAND_ACCESS_TOKEN=YOUR_TOKEN_HERE
+
+# Nuevas
+REDIS_URL=redis://localhost:6379
+SNAPSHOT_REFRESH_SECRET=GENERATE_A_LONG_RANDOM_SECRET
+SNAPSHOT_CHECK_INTERVAL_MS=5000
+
+# Nuevas, opcionales
+# Vacía → la clave de Redis es "content-island:snapshot"
+CONTENT_ISLAND_PROJECT_ID=
+# Si no las defines, toman estos valores por defecto
+# SNAPSHOT_VERSION_CHECK_TIMEOUT_MS=3000
+# SNAPSHOT_LOAD_TIMEOUT_MS=10000
+```
+
+**Terminal**
+
+```bash
+cp .env.example .env
+openssl rand -base64 32     # el resultado va en SNAPSHOT_REFRESH_SECRET
+```
+
+**Dices:**
+
+> `REDIS_URL` apunta al Redis que acabamos de levantar. `SNAPSHOT_REFRESH_SECRET`
+> es el secreto que protegerá el endpoint de refresco; lo genero con `openssl`.
+> `SNAPSHOT_CHECK_INTERVAL_MS` es cada cuánto mira cada instancia si hay versión
+> nueva: en local lo pongo a cinco segundos para que la demo se vea. Si no lo
+> pones, son cinco minutos.
+>
+> Y las del final son opcionales. `CONTENT_ISLAND_PROJECT_ID` solo sirve para
+> prefijar la clave de Redis si dos entornos comparten el mismo Redis; la dejo
+> vacía. Y los dos timeouts, con sus valores por defecto.
 
 ---
 

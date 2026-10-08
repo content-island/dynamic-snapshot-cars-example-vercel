@@ -580,6 +580,42 @@ Aunque corre en cada petición, casi siempre termina en la comparación de
 
 ## 12. Probarlo en local
 
+### Configurar las variables de entorno
+
+En `00-start` el `.env` solo llevaba `CONTENT_ISLAND_ACCESS_TOKEN`. En
+`01-local` hacen falta más variables, así que antes de arrancar prepara el
+`.env` a partir del nuevo `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Si vienes de `00-start`, conserva tu token y añade el resto.
+
+| Variable                            | En `00-start` | En `01-local`               | Para qué                                                                 |
+| ----------------------------------- | ------------- | --------------------------- | ------------------------------------------------------------------------ |
+| `CONTENT_ISLAND_ACCESS_TOKEN`       | obligatoria   | obligatoria, **sin cambios** | Leer de Content Island (`exportSnapshot()` y la reconstrucción)         |
+| `REDIS_URL`                         | —             | **nueva, obligatoria**      | Conexión a Redis. En local, `redis://localhost:6379` (el `docker-compose.yml`) |
+| `SNAPSHOT_REFRESH_SECRET`           | —             | **nueva, obligatoria**      | Secreto de `POST /api/snapshot/refresh`. Sin ella, el endpoint responde siempre `401` |
+| `SNAPSHOT_CHECK_INTERVAL_MS`        | —             | **nueva**, recomendada      | Cada cuánto se compara la versión con Redis. Por defecto `300000` (5 min); pon `5000` en local |
+| `CONTENT_ISLAND_PROJECT_ID`         | —             | **nueva**, opcional         | Prefija la clave de Redis. Vacía → `content-island:snapshot`             |
+| `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` | —             | **nueva**, opcional         | Tiempo máximo para leer la versión en Redis. Por defecto `3000`          |
+| `SNAPSHOT_LOAD_TIMEOUT_MS`          | —             | **nueva**, opcional         | Tiempo máximo para descargar el snapshot completo. Por defecto `10000`   |
+
+Para generar el secreto:
+
+```bash
+openssl rand -base64 32
+```
+
+Dos detalles que conviene saber antes de probar:
+
+- Si falta `REDIS_URL`, el servidor arranca, pero cada página responde `503` y en el log verás `No Redis connection string found`.
+- Si no defines `SNAPSHOT_CHECK_INTERVAL_MS`, el intervalo es de 5 minutos y en
+  el apartado 11.6 tendrás que esperar ese tiempo para ver el cambio.
+
+### Arrancar
+
 ```bash
 docker compose up -d
 npm run dev

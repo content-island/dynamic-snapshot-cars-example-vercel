@@ -582,6 +582,42 @@ comparison in memory.
 
 ## 12. Testing it locally
 
+### Set up the environment variables
+
+In `00-start` the `.env` only had `CONTENT_ISLAND_ACCESS_TOKEN`. `01-local`
+needs more variables, so before starting build your `.env` from the new
+`.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+If you are coming from `00-start`, keep your token and add the rest.
+
+| Variable                            | In `00-start` | In `01-local`               | What for                                                                  |
+| ----------------------------------- | ------------- | --------------------------- | ------------------------------------------------------------------------- |
+| `CONTENT_ISLAND_ACCESS_TOKEN`       | required      | required, **unchanged**     | Reading from Content Island (`exportSnapshot()` and the rebuild)          |
+| `REDIS_URL`                         | —             | **new, required**           | Redis connection. Locally, `redis://localhost:6379` (the `docker-compose.yml`) |
+| `SNAPSHOT_REFRESH_SECRET`           | —             | **new, required**           | Secret for `POST /api/snapshot/refresh`. Without it the endpoint always returns `401` |
+| `SNAPSHOT_CHECK_INTERVAL_MS`        | —             | **new**, recommended        | How often the version is checked against Redis. Defaults to `300000` (5 min); use `5000` locally |
+| `CONTENT_ISLAND_PROJECT_ID`         | —             | **new**, optional           | Prefixes the Redis key. Empty → `content-island:snapshot`                 |
+| `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` | —             | **new**, optional           | Max time to read the version from Redis. Defaults to `3000`               |
+| `SNAPSHOT_LOAD_TIMEOUT_MS`          | —             | **new**, optional           | Max time to download the full snapshot. Defaults to `10000`               |
+
+To generate the secret:
+
+```bash
+openssl rand -base64 32
+```
+
+Two things worth knowing before you test:
+
+- If `REDIS_URL` is missing, the server starts, but every page returns `503` and the log shows `No Redis connection string found`.
+- If you leave `SNAPSHOT_CHECK_INTERVAL_MS` unset, the interval is 5 minutes and
+  in 11.6 you will have to wait that long to see the change.
+
+### Start it
+
 ```bash
 docker compose up -d
 npm run dev
