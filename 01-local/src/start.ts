@@ -7,12 +7,15 @@ import {
 import { ensureFreshSnapshot } from '#/server/snapshot-manager'
 
 const REFRESH_ENDPOINT = '/api/snapshot/refresh'
+const SNAPSHOT_INFO_ENDPOINT = '/api/content-island/snapshot-info'
 
 const snapshotMiddleware = createMiddleware().server(
   async ({ pathname, next }) => {
-    // The refresh endpoint is the one thing that must work while Redis is still
-    // empty; it is what fills it. Gating it behind the snapshot would deadlock.
-    if (pathname === REFRESH_ENDPOINT) {
+    // The refresh and snapshot-info endpoints must keep working while Redis is
+    // still empty: refresh is what fills it, and snapshot-info is how we check
+    // its state. Gating them behind the snapshot would deadlock refresh and blind
+    // the diagnostics.
+    if (pathname === REFRESH_ENDPOINT || pathname === SNAPSHOT_INFO_ENDPOINT) {
       return next()
     }
 

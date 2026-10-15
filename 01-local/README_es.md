@@ -513,7 +513,7 @@ Los dos casos se tratan distinto **a propósito**:
 ```ts
 const snapshotMiddleware = createMiddleware().server(
   async ({ pathname, next }) => {
-    if (pathname === REFRESH_ENDPOINT) {
+    if (pathname === REFRESH_ENDPOINT || pathname === SNAPSHOT_INFO_ENDPOINT) {
       return next();
     }
 
@@ -533,10 +533,10 @@ const snapshotMiddleware = createMiddleware().server(
 
 Tres cosas que conviene tener claras:
 
-**El endpoint de refresco se excluye.** Es el único que tiene que funcionar con
-Redis vacío, porque es el que lo llena. Si lo cubriera el middleware, tendrías
-un bloqueo mutuo: para servir necesitas snapshot, y para tener snapshot
-necesitas servir ese endpoint.
+**Los endpoints de refresco y `snapshot-info` se excluyen.** El de refresco
+escribe el snapshot, así que no necesita cargarlo antes. `snapshot-info` muestra
+el estado de la instancia tal cual está, así que el middleware no debe
+actualizarla antes de responder.
 
 **`pathname` te lo dan hecho.** El contexto del middleware de petición es
 `{ request, pathname, context, next, handlerType, serverFnMeta }`. El borrador
