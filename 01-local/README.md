@@ -47,7 +47,7 @@ So here we **invert the model**: instead of Redis announcing, each instance
 | Function memory | Fast copy, used for reads |
 | Content Island API | Origin for generating new versions |
 
-Pub/Sub could be added later as an optimisation to propagate changes sooner, but
+Pub/Sub could be added later as an optimization to propagate changes sooner, but
 the version check would still have to exist.
 
 ### Why Redis and not Vercel Blob
@@ -213,10 +213,10 @@ covers the ones that do not exist yet.
 This is not theoretical. Measured in this project, importing a `src/server/probe.ts`
 holding a single constant from a client component:
 
-| | Build | Reaches the browser? |
-| --- | --- | --- |
+|                  | Build             | Reaches the browser?                                          |
+| ---------------- | ----------------- | ------------------------------------------------------------- |
 | Without the rule | **passes, green** | **yes — the constant landed in `.output/public/assets/*.js`** |
-| With the rule | fails | no |
+| With the rule    | fails             | no                                                            |
 
 The current code did not leak only because it drags in `node:zlib` and
 `node:crypto`, which breaks the client bundle for an unrelated reason. A server
@@ -514,7 +514,7 @@ The two cases are handled differently **on purpose**:
 ```ts
 const snapshotMiddleware = createMiddleware().server(
   async ({ pathname, next }) => {
-    if (pathname === REFRESH_ENDPOINT) {
+    if (pathname === REFRESH_ENDPOINT || pathname === SNAPSHOT_INFO_ENDPOINT) {
       return next()
     }
 
@@ -534,10 +534,10 @@ const snapshotMiddleware = createMiddleware().server(
 
 Three things worth being clear about:
 
-**The refresh endpoint is excluded.** It is the only one that has to work with
-an empty Redis, because it is what fills it. If the middleware covered it you
-would have a deadlock: to serve you need a snapshot, and to have a snapshot you
-need to serve that endpoint.
+**The refresh and `snapshot-info` endpoints are excluded.** Refresh writes the
+snapshot, so it does not need to load it first. `snapshot-info` shows the
+instance's state as it is, so the middleware must not update it before
+answering.
 
 **`pathname` is handed to you.** The request middleware context is
 `{ request, pathname, context, next, handlerType, serverFnMeta }`. The draft did
@@ -594,15 +594,15 @@ cp .env.example .env
 
 If you are coming from `00-start`, keep your token and add the rest.
 
-| Variable                            | In `00-start` | In `01-local`               | What for                                                                  |
-| ----------------------------------- | ------------- | --------------------------- | ------------------------------------------------------------------------- |
-| `CONTENT_ISLAND_ACCESS_TOKEN`       | required      | required, **unchanged**     | Reading from Content Island (`exportSnapshot()` and the rebuild)          |
-| `REDIS_URL`                         | —             | **new, required**           | Redis connection. Locally, `redis://localhost:6379` (the `docker-compose.yml`) |
-| `SNAPSHOT_REFRESH_SECRET`           | —             | **new, required**           | Secret for `POST /api/snapshot/refresh`. Without it the endpoint always returns `401` |
-| `SNAPSHOT_CHECK_INTERVAL_MS`        | —             | **new**, recommended        | How often the version is checked against Redis. Defaults to `300000` (5 min); use `5000` locally |
-| `CONTENT_ISLAND_PROJECT_ID`         | —             | **new**, optional           | Prefixes the Redis key. Empty → `content-island:snapshot`                 |
-| `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` | —             | **new**, optional           | Max time to read the version from Redis. Defaults to `3000`               |
-| `SNAPSHOT_LOAD_TIMEOUT_MS`          | —             | **new**, optional           | Max time to download the full snapshot. Defaults to `10000`               |
+| Variable                            | In `00-start` | In `01-local`           | What for                                                                                         |
+| ----------------------------------- | ------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `CONTENT_ISLAND_ACCESS_TOKEN`       | required      | required, **unchanged** | Reading from Content Island (`exportSnapshot()` and the rebuild)                                 |
+| `REDIS_URL`                         | —             | **new, required**       | Redis connection. Locally, `redis://localhost:6379` (the `docker-compose.yml`)                   |
+| `SNAPSHOT_REFRESH_SECRET`           | —             | **new, required**       | Secret for `POST /api/snapshot/refresh`. Without it the endpoint always returns `401`            |
+| `SNAPSHOT_CHECK_INTERVAL_MS`        | —             | **new**, recommended    | How often the version is checked against Redis. Defaults to `300000` (5 min); use `5000` locally |
+| `CONTENT_ISLAND_PROJECT_ID`         | —             | **new**, optional       | Prefixes the Redis key. Empty → `content-island:snapshot`                                        |
+| `SNAPSHOT_VERSION_CHECK_TIMEOUT_MS` | —             | **new**, optional       | Max time to read the version from Redis. Defaults to `3000`                                      |
+| `SNAPSHOT_LOAD_TIMEOUT_MS`          | —             | **new**, optional       | Max time to download the full snapshot. Defaults to `10000`                                      |
 
 To generate the secret:
 
@@ -771,7 +771,7 @@ timers, so its socket would otherwise linger. It is a no-op outside Vercel.
 | Persistence | **No** | Yes |
 | TLS | **No** | Yes |
 
-Two consequences worth internalising:
+Two consequences worth internalizing:
 
 **No TLS on the free plan.** Redis's own docs: *"TLS is not available for Free
 Redis Cloud Essentials plans."* Your connection string will be `redis://`, in
@@ -838,7 +838,7 @@ All of it is done in [`02-deploy`](../02-deploy):
 
 - Managed Redis from the Vercel Marketplace.
 - Environment variables on Vercel and a realistic `SNAPSHOT_CHECK_INTERVAL_MS`.
-- Initialising the production Redis.
+- Initializing the production Redis.
 - Content Island webhook → `repository_dispatch` → GitHub Action → refresh
   endpoint.
 - A GitHub PAT with the minimum permissions.

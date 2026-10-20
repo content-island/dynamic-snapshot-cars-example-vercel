@@ -580,7 +580,7 @@ vídeo para alguien que venga de front, y no lo sabe casi nadie.
 **Dices:**
 
 > Así que se lo decimos nosotros. TanStack Start trae una cosa que se llama
-> *import protection*, y le vamos a poner una regla: nada de `src/server` puede
+> _import protection_, y le vamos a poner una regla: nada de `src/server` puede
 > entrar en el bundle de cliente.
 
 **`vite.config.ts`** · ya existe · **el cambio, en diff**
@@ -623,7 +623,6 @@ contraste vale más que toda la explicación.
 > Fíjate, sin la regla el build pasa tan contento. Y aquí está mi secreto, en un
 > fichero JavaScript que se descarga cualquiera que abra la web. Ponemos la regla,
 > volvemos a compilar... y ahora sí protesta.
-
 
 **Ojo:** `redis.ts` son unas 100 líneas y `snapshot-store.ts` unas 130. Teclearlas
 enteras en directo es un peñazo de ver. Lo que funciona: escribe a mano la parte
@@ -798,7 +797,7 @@ export async function ensureRedisReady(): Promise<void> {
 > binarios**, no texto. Si los tratas como string, UTF-8 te los corrompe por el
 > camino y luego no hay manera de descomprimirlos.
 
-*(en el fichero que acabas de pegar, la función `getBufferClient`)*
+_(en el fichero que acabas de pegar, la función `getBufferClient`)_
 
 **Dices:**
 
@@ -966,7 +965,7 @@ export async function loadSnapshotJson(): Promise<string> {
 }
 ```
 
-*(lo que estamos comentando es el `hSet` de `saveSnapshot`)*
+_(lo que estamos comentando es el `hSet` de `saveSnapshot`)_
 
 **Dices:**
 
@@ -992,7 +991,7 @@ el hueco. Es un concepto que se entiende mucho mejor en imagen que hablado.
 **Dices:**
 
 > Y llegó el momento. Este es el cambio del que te hablaba al principio.
-
+>
 > NOTA MOVER ESTE FICHERO BAJO LA CARPETA SERVER y explicar porque, comentar que podríamos marcar como server
 
 **`src/common/api/content-island-client.ts`** · ya existe · **el cambio, en diff**
@@ -1157,7 +1156,7 @@ export const Route = createFileRoute('/api/snapshot/refresh')({
 > Y sobre el permiso: es un endpoint público, así que va protegido con un secreto
 > compartido en una cabecera.
 
-*(la función `isValidSecret`, arriba del mismo fichero — ya está en lo que has pegado)*
+_(la función `isValidSecret`, arriba del mismo fichero — ya está en lo que has pegado)_
 
 ```ts
 const expectedHash = createHash("sha256").update(expected).digest();
@@ -1227,7 +1226,8 @@ cualquier webhook que escriban en su vida. No lo cortes en edición.
 
 **Dices:**
 
-> Dos lecturas en paralelo. `getSnapshotInfo` me dice qué snapshot tiene **esta**
+> Aquí tenemos dos lecturas concurrentes, así que las espero juntas con Promise.all.
+> `getSnapshotInfo` me dice qué snapshot tiene **esta**
 > instancia en memoria, como el cliente ya está en modo snapshot, no sale a la red.
 > Y `getStoredSnapshotVersion` lee la versión que hay en Redis, la misma lectura
 > barata que hicimos en `snapshot-store`.
@@ -1418,7 +1418,7 @@ export async function ensureFreshSnapshot(): Promise<void> {
 > lo carga y bloquea hasta tenerlo. Dos: si lo tiene y no ha pasado el intervalo,
 > no hace absolutamente nada.
 
-*(dentro de `ensureFreshSnapshot`, en el mismo fichero)*
+_(dentro de `ensureFreshSnapshot`, en el mismo fichero)_
 
 ```ts
 if (Date.now() < nextCheckAt) {
